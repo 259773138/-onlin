@@ -2,9 +2,10 @@
 <html lang="zh-CN" class="dark">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>NexChat | 零配置终端</title>
-    <!-- 核心库 (国内优选源) -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <meta name="theme-color" content="#121212">
+    <title>NexChat | 沉浸终端</title>
+    <!-- 核心库 -->
     <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
@@ -14,7 +15,7 @@
             theme: {
                 extend: {
                     colors: {
-                        primary: '#10b981', // Emerald 500
+                        primary: '#10b981', 
                         dark: '#121212',
                         panel: '#1e1e1e',
                         bubble: '#2c2c2c'
@@ -25,230 +26,238 @@
     </script>
     <style>
         [v-cloak] { display: none; }
+        /* 关键：使用 dvh 解决手机地址栏遮挡问题 */
+        .h-dynamic-screen { height: 100vh; height: 100dvh; }
+        
         .slide-enter-active, .slide-leave-active { transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1); }
         .slide-enter-from, .slide-leave-to { transform: translateX(100%); }
-        .fade-enter-active, .fade-leave-active { transition: opacity 0.2s; }
+        .fade-enter-active, .fade-leave-active { transition: opacity 0.3s; }
         .fade-enter-from, .fade-leave-to { opacity: 0; }
-        ::-webkit-scrollbar { width: 0px; background: transparent; } /* 隐藏滚动条 */
-        .glass-header { background: rgba(30,30,30,0.85); backdrop-filter: blur(12px); border-bottom: 1px solid rgba(255,255,255,0.05); }
+        
+        ::-webkit-scrollbar { width: 0px; background: transparent; }
+        .glass-header { background: rgba(30,30,30,0.9); backdrop-filter: blur(10px); border-bottom: 1px solid rgba(255,255,255,0.05); }
+        
+        /* 启动动画 */
+        .pulse-ring { animation: pulse-ring 2s cubic-bezier(0.215, 0.61, 0.355, 1) infinite; }
+        @keyframes pulse-ring { 0% { transform: scale(0.9); opacity: 1; } 100% { transform: scale(1.5); opacity: 0; } }
     </style>
 </head>
-<body class="bg-dark text-gray-200 h-screen w-screen overflow-hidden font-sans select-none">
+<body class="bg-dark text-gray-200 overflow-hidden font-sans select-none">
 
-<div id="app" v-cloak class="h-full max-w-lg mx-auto flex flex-col relative bg-dark shadow-2xl md:border-x border-white/5">
+<div id="app" v-cloak class="w-full h-dynamic-screen flex flex-col relative bg-dark">
 
-    <!-- 顶部导航 -->
-    <header class="h-16 flex items-center justify-between px-5 glass-header z-30 absolute top-0 w-full">
-        <div class="flex items-center gap-3">
-            <button v-if="currentView === 'private'" @click="switchView('public')" class="p-2 -ml-2 text-gray-400 hover:text-white">
-                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"></path></svg>
-            </button>
-            
-            <div @click="showMenu = true" class="flex flex-col cursor-pointer">
-                <h1 class="text-lg font-bold tracking-wide flex items-center gap-2">
-                    {{ title }}
-                    <span class="w-2 h-2 rounded-full" :class="isOnline ? 'bg-primary shadow-[0_0_8px_#10b981]' : 'bg-red-500'"></span>
-                </h1>
-                <span class="text-[10px] text-gray-500 font-mono tracking-wider">ID: {{ myIdShort }}</span>
-            </div>
-        </div>
-
-        <!-- 右侧菜单按钮 -->
-        <button @click="showMenu = true" class="p-2 bg-white/5 rounded-full hover:bg-white/10 transition">
-            <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16m-7 6h7"></path></svg>
-        </button>
-    </header>
-
-    <!-- 消息区域 -->
-    <main class="flex-1 overflow-y-auto pt-20 pb-4 px-4 space-y-5" id="chat-container">
-        <!-- 欢迎/状态卡片 -->
-        <div class="text-center py-4">
-            <span class="px-3 py-1 rounded-full bg-white/5 text-[10px] text-gray-500 border border-white/5">
-                {{ currentView === 'public' ? '📡 广播模式：消息将发送给所有在线好友' : '🔒 绝密模式：点对点加密直连' }}
-            </span>
-        </div>
-
-        <!-- 消息气泡 -->
-        <div v-for="(msg, i) in currentMessages" :key="i" class="flex flex-col" :class="msg.isMe ? 'items-end' : 'items-start'">
-            <div class="flex items-center gap-2 mb-1 px-1">
-                <span v-if="!msg.isMe" class="text-[11px] font-bold text-gray-400">{{ msg.senderName }}</span>
-                <span class="text-[9px] text-gray-600 font-mono">{{ msg.time }}</span>
-            </div>
-            
-            <div class="max-w-[85%] px-4 py-2.5 rounded-2xl text-[15px] leading-relaxed break-words shadow-sm relative group"
-                 :class="msg.isMe ? 'bg-primary text-black font-medium rounded-tr-sm' : 'bg-bubble text-gray-200 rounded-tl-sm'">
-                {{ msg.text }}
-            </div>
-        </div>
-        
-        <!-- 底部垫高 -->
-        <div class="h-16"></div>
-    </main>
-
-    <!-- 底部输入框 -->
-    <footer class="absolute bottom-0 w-full p-4 glass-header z-30">
-        <div class="flex items-center gap-3 bg-panel p-1.5 rounded-full border border-white/10 focus-within:border-primary/50 transition-colors">
-            <input v-model="inputText" @keyup.enter="send" type="text" placeholder="输入消息..." class="flex-1 bg-transparent px-4 py-2 outline-none text-white placeholder-gray-600">
-            <button @click="send" :disabled="!inputText.trim()" class="w-10 h-10 rounded-full bg-primary flex items-center justify-center text-black hover:bg-emerald-400 disabled:opacity-50 disabled:cursor-not-allowed transition">
-                <svg class="w-5 h-5 translate-x-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"></path></svg>
-            </button>
-        </div>
-    </footer>
-
-    <!-- 右侧滑菜单 -->
-    <transition name="slide">
-        <div v-if="showMenu" class="absolute inset-0 z-50 bg-dark flex flex-col">
-            <!-- 菜单头 -->
-            <div class="h-20 px-6 flex items-end justify-between pb-4 bg-panel border-b border-white/5">
-                <h2 class="text-2xl font-bold text-white">控制台</h2>
-                <button @click="showMenu = false" class="p-2 bg-white/10 rounded-full">
-                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+    <!-- 启动网关 (点击进入全屏) -->
+    <transition name="fade">
+        <div v-if="!isStarted" class="absolute inset-0 z-[100] bg-dark flex flex-col items-center justify-center p-6 text-center">
+            <div class="relative w-24 h-24 mb-8 flex items-center justify-center">
+                <div class="absolute inset-0 border-2 border-primary rounded-full pulse-ring"></div>
+                <button @click="enterSystem" class="w-20 h-20 bg-primary rounded-full flex items-center justify-center shadow-[0_0_20px_#10b981] active:scale-90 transition transform">
+                    <svg class="w-8 h-8 text-black" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg>
                 </button>
             </div>
-
-            <div class="flex-1 overflow-y-auto p-6 space-y-8">
-                <!-- 个人信息 -->
-                <div class="space-y-4">
-                    <h3 class="text-xs font-bold text-gray-500 uppercase tracking-widest">我的身份</h3>
-                    <div class="bg-panel p-4 rounded-xl border border-white/5 space-y-3">
-                        <input v-model="myName" @change="saveSettings" class="w-full bg-transparent text-xl font-bold text-primary border-b border-white/10 focus:border-primary outline-none py-1" placeholder="设定昵称">
-                        <div @click="copyId" class="flex items-center justify-between bg-black/30 p-3 rounded-lg cursor-pointer active:scale-95 transition">
-                            <div>
-                                <div class="text-[10px] text-gray-500 mb-1">通讯 ID (点击复制)</div>
-                                <div class="font-mono text-xs text-gray-300">{{ myId }}</div>
-                            </div>
-                            <svg class="w-5 h-5 text-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 012 2v8a2 2 0 01-2 2h-8a2 2 0 01-2-2v-8a2 2 0 012-2h8"></path></svg>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- 好友管理 -->
-                <div class="space-y-4">
-                    <div class="flex justify-between items-end">
-                        <h3 class="text-xs font-bold text-gray-500 uppercase tracking-widest">好友列表</h3>
-                        <button @click="showAddModal = true" class="text-xs text-primary font-bold hover:underline">+ 添加好友</button>
-                    </div>
-                    
-                    <div v-if="friends.length === 0" class="text-center py-6 text-gray-600 text-sm bg-panel rounded-xl border border-white/5 border-dashed">
-                        暂无好友，点击上方添加<br>建立连接后即可私聊
-                    </div>
-
-                    <div class="space-y-2">
-                        <!-- 广播频道入口 -->
-                        <div @click="enterChat('public')" :class="['p-4 rounded-xl flex items-center gap-3 cursor-pointer border transition', currentView === 'public' ? 'bg-primary/10 border-primary' : 'bg-panel border-white/5']">
-                            <div class="w-10 h-10 rounded-full bg-white/10 flex items-center justify-center text-lg">📡</div>
-                            <div>
-                                <div class="font-bold text-sm">广播频道</div>
-                                <div class="text-[10px] text-gray-500">发送给所有在线好友</div>
-                            </div>
-                        </div>
-
-                        <!-- 好友列表 -->
-                        <div v-for="friend in friends" :key="friend.id" @click="enterChat(friend)" class="p-3 bg-panel rounded-xl border border-white/5 flex items-center justify-between active:scale-95 transition cursor-pointer">
-                            <div class="flex items-center gap-3 overflow-hidden">
-                                <div class="w-10 h-10 rounded-full bg-gradient-to-br from-gray-700 to-black flex items-center justify-center font-bold text-white relative border border-white/10">
-                                    {{ friend.name.slice(0,1) }}
-                                    <div class="absolute bottom-0 right-0 w-2.5 h-2.5 rounded-full border-2 border-panel" :class="connections[friend.id] ? 'bg-primary' : 'bg-red-500'"></div>
-                                </div>
-                                <div>
-                                    <div class="font-bold text-sm text-gray-200">{{ friend.name }}</div>
-                                    <div class="text-[10px]" :class="connections[friend.id] ? 'text-primary' : 'text-gray-500'">{{ connections[friend.id] ? '在线' : '离线' }}</div>
-                                </div>
-                            </div>
-                            <button @click.stop="deleteFriend(friend.id)" class="p-2 text-gray-600 hover:text-red-500">✕</button>
-                        </div>
-                    </div>
-                </div>
-                
-                <!-- 清理数据 -->
-                <button @click="clearData" class="w-full py-3 rounded-xl border border-red-900/50 text-red-500 text-sm hover:bg-red-900/10 transition">销毁所有本地数据</button>
-            </div>
+            <h1 class="text-2xl font-bold text-white mb-2 tracking-widest">NEXCHAT</h1>
+            <p class="text-xs text-gray-500 mb-8">P2P 加密直连协议 / 本地存储</p>
+            <div class="text-[10px] text-gray-600 animate-pulse">点击按钮启动全屏沉浸模式</div>
         </div>
     </transition>
 
-    <!-- 添加好友弹窗 -->
-    <div v-if="showAddModal" class="absolute inset-0 z-[60] bg-black/90 flex items-center justify-center p-8 backdrop-blur-sm">
-        <div class="bg-panel w-full max-w-sm p-6 rounded-2xl border border-white/10 shadow-2xl">
-            <h3 class="text-lg font-bold mb-4">建立连接</h3>
-            <input v-model="newFriendId" placeholder="输入对方 ID" class="w-full bg-dark text-white p-3 rounded-lg border border-white/10 mb-3 outline-none focus:border-primary">
-            <input v-model="newFriendName" placeholder="给TA备注" class="w-full bg-dark text-white p-3 rounded-lg border border-white/10 mb-6 outline-none focus:border-primary">
-            <div class="flex gap-3">
-                <button @click="showAddModal = false" class="flex-1 py-3 bg-white/5 rounded-lg hover:bg-white/10 transition">取消</button>
-                <button @click="addFriend" class="flex-1 py-3 bg-primary text-black font-bold rounded-lg hover:bg-emerald-400 transition">连接</button>
+    <!-- 主界面 -->
+    <div v-if="isStarted" class="flex-1 flex flex-col h-full max-w-lg mx-auto md:border-x border-white/5 relative shadow-2xl">
+        
+        <!-- 顶部导航 -->
+        <header class="h-14 flex-none flex items-center justify-between px-4 glass-header z-30">
+            <div class="flex items-center gap-3">
+                <button v-if="currentView === 'private'" @click="switchView('public')" class="p-1 -ml-1 text-gray-400 hover:text-white">
+                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"></path></svg>
+                </button>
+                
+                <div @click="showMenu = true" class="flex flex-col cursor-pointer">
+                    <h1 class="text-base font-bold tracking-wide flex items-center gap-2 text-white">
+                        {{ title }}
+                        <span class="w-1.5 h-1.5 rounded-full" :class="isOnline ? 'bg-primary shadow-[0_0_8px_#10b981]' : 'bg-red-500'"></span>
+                    </h1>
+                </div>
+            </div>
+            <button @click="showMenu = true" class="p-2 bg-white/5 rounded-full hover:bg-white/10 transition">
+                <svg class="w-5 h-5 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16m-7 6h7"></path></svg>
+            </button>
+        </header>
+
+        <!-- 消息区域 -->
+        <main class="flex-1 overflow-y-auto px-4 py-4 space-y-4 scroll-smooth" id="chat-container">
+            <div class="text-center py-2 opacity-50">
+                <span class="text-[10px] text-gray-500 tracking-wider">
+                    {{ currentView === 'public' ? '--- 广播频段 ---' : '--- 加密直连 ---' }}
+                </span>
+            </div>
+
+            <div v-for="(msg, i) in currentMessages" :key="i" class="flex flex-col" :class="msg.isMe ? 'items-end' : 'items-start'">
+                <div class="flex items-center gap-2 mb-1 px-1">
+                    <span v-if="!msg.isMe" class="text-[10px] font-bold text-gray-400">{{ msg.senderName }}</span>
+                    <span class="text-[9px] text-gray-600 font-mono">{{ msg.time }}</span>
+                </div>
+                <div class="max-w-[85%] px-4 py-2 rounded-2xl text-[15px] leading-snug break-words shadow-md"
+                     :class="msg.isMe ? 'bg-primary text-black font-medium rounded-tr-sm' : 'bg-bubble text-gray-200 rounded-tl-sm'">
+                    {{ msg.text }}
+                </div>
+            </div>
+        </main>
+
+        <!-- 底部输入框 (适配安全区域) -->
+        <footer class="flex-none p-3 glass-header z-30 pb-[max(12px,env(safe-area-inset-bottom))]">
+            <div class="flex items-center gap-2 bg-panel p-1 rounded-full border border-white/10 focus-within:border-primary/50 transition-colors">
+                <input v-model="inputText" @keyup.enter="send" type="text" placeholder="输入消息..." class="flex-1 bg-transparent px-4 py-2 outline-none text-white placeholder-gray-600 text-sm">
+                <button @click="send" :disabled="!inputText.trim()" class="w-9 h-9 rounded-full bg-primary flex items-center justify-center text-black hover:bg-emerald-400 disabled:opacity-50 transition">
+                    <svg class="w-4 h-4 translate-x-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"></path></svg>
+                </button>
+            </div>
+        </footer>
+
+        <!-- 右侧滑菜单 -->
+        <transition name="slide">
+            <div v-if="showMenu" class="absolute inset-0 z-50 bg-dark flex flex-col h-full">
+                <div class="h-16 px-5 flex items-center justify-between bg-panel border-b border-white/5 flex-none">
+                    <h2 class="text-lg font-bold text-white">控制台</h2>
+                    <button @click="showMenu = false" class="p-2 bg-white/10 rounded-full text-gray-300">✕</button>
+                </div>
+
+                <div class="flex-1 overflow-y-auto p-5 space-y-6">
+                    <div class="bg-panel p-4 rounded-xl border border-white/5 space-y-3">
+                        <label class="text-xs text-gray-500 uppercase">我的身份</label>
+                        <input v-model="myName" @change="saveSettings" class="w-full bg-transparent text-lg font-bold text-primary border-b border-white/10 focus:border-primary outline-none py-1">
+                        <div @click="copyId" class="flex items-center justify-between bg-black/30 p-3 rounded-lg cursor-pointer active:bg-white/5">
+                            <div class="flex flex-col overflow-hidden">
+                                <span class="text-[10px] text-gray-500">通讯 ID (点击复制)</span>
+                                <span class="font-mono text-xs text-gray-300 truncate">{{ myId }}</span>
+                            </div>
+                            <span class="text-primary text-xs whitespace-nowrap ml-2">复制</span>
+                        </div>
+                    </div>
+
+                    <div class="space-y-3">
+                        <div class="flex justify-between items-center">
+                            <span class="text-xs text-gray-500 uppercase">联系列表</span>
+                            <button @click="showAddModal = true" class="text-xs text-primary font-bold">+ 添加</button>
+                        </div>
+
+                        <div @click="enterChat('public')" :class="['p-3 rounded-xl flex items-center gap-3 cursor-pointer border transition', currentView === 'public' ? 'bg-primary/10 border-primary' : 'bg-panel border-white/5']">
+                            <div class="w-10 h-10 rounded-full bg-white/5 flex items-center justify-center">📡</div>
+                            <div class="flex-1">
+                                <div class="font-bold text-sm text-gray-200">广播频道</div>
+                                <div class="text-[10px] text-gray-500">群发给所有在线好友</div>
+                            </div>
+                        </div>
+
+                        <div v-for="friend in friends" :key="friend.id" @click="enterChat(friend)" class="p-3 bg-panel rounded-xl border border-white/5 flex items-center justify-between active:scale-95 transition">
+                            <div class="flex items-center gap-3 overflow-hidden">
+                                <div class="w-10 h-10 rounded-full bg-gray-800 flex items-center justify-center text-white relative border border-white/10 font-bold">
+                                    {{ friend.name.slice(0,1) }}
+                                    <div class="absolute bottom-0 right-0 w-2.5 h-2.5 rounded-full border-2 border-panel" :class="connections[friend.id] ? 'bg-primary' : 'bg-red-500'"></div>
+                                </div>
+                                <div class="flex-1 min-w-0">
+                                    <div class="font-bold text-sm text-gray-200 truncate">{{ friend.name }}</div>
+                                    <div class="text-[10px]" :class="connections[friend.id] ? 'text-primary' : 'text-gray-500'">{{ connections[friend.id] ? '在线' : '离线' }}</div>
+                                </div>
+                            </div>
+                            <button @click.stop="deleteFriend(friend.id)" class="px-2 text-gray-500 hover:text-red-500">✕</button>
+                        </div>
+                    </div>
+                    
+                    <div class="pt-4">
+                        <button @click="clearData" class="w-full py-3 text-xs text-red-500 bg-red-500/10 rounded-lg hover:bg-red-500/20">⚠ 销毁本机数据</button>
+                    </div>
+                </div>
+            </div>
+        </transition>
+
+        <!-- 添加好友弹窗 -->
+        <div v-if="showAddModal" class="absolute inset-0 z-[60] bg-black/90 flex items-center justify-center p-6 backdrop-blur-sm">
+            <div class="bg-panel w-full max-w-xs p-6 rounded-2xl border border-white/10 shadow-2xl">
+                <h3 class="text-lg font-bold mb-4 text-white">建立连接</h3>
+                <input v-model="newFriendId" placeholder="输入对方 ID" class="w-full bg-dark text-white p-3 rounded-lg border border-white/10 mb-3 outline-none focus:border-primary text-sm">
+                <input v-model="newFriendName" placeholder="备注名称" class="w-full bg-dark text-white p-3 rounded-lg border border-white/10 mb-6 outline-none focus:border-primary text-sm">
+                <div class="flex gap-3">
+                    <button @click="showAddModal = false" class="flex-1 py-2.5 bg-white/5 text-gray-400 rounded-lg text-sm">取消</button>
+                    <button @click="addFriend" class="flex-1 py-2.5 bg-primary text-black font-bold rounded-lg text-sm">确认</button>
+                </div>
             </div>
         </div>
     </div>
-
 </div>
 
 <script>
-    const { createApp, ref, reactive, computed, onMounted, nextTick, watch } = Vue;
+    const { createApp, ref, reactive, computed, onMounted, nextTick } = Vue;
 
     createApp({
         setup() {
-            // --- 核心数据 ---
-            const myId = ref('正在初始化...');
-            const myName = ref(localStorage.getItem('nc_name') || '匿名' + Math.floor(Math.random()*999));
-            const friends = ref(JSON.parse(localStorage.getItem('nc_friends') || '[]'));
-            // 存储结构： { 'public': [], 'friendId1': [], ... }
-            const history = reactive(JSON.parse(localStorage.getItem('nc_history') || '{"public":[]}'));
-            
-            // --- UI 状态 ---
-            const currentView = ref('public'); // 'public' | 'private'
-            const activeFriendId = ref(null);
+            // UI 状态
+            const isStarted = ref(false);
             const showMenu = ref(false);
             const showAddModal = ref(false);
+            const currentView = ref('public'); 
+            const activeFriendId = ref(null);
             const inputText = ref('');
-            const isOnline = ref(false);
             
-            // --- PeerJS ---
+            // 数据核心
+            const myId = ref('初始化...');
+            const myName = ref(localStorage.getItem('nc_name') || '匿名' + Math.floor(Math.random()*99));
+            const friends = ref(JSON.parse(localStorage.getItem('nc_friends') || '[]'));
+            const history = reactive(JSON.parse(localStorage.getItem('nc_history') || '{"public":[]}'));
             const connections = reactive({});
-            let peer = null;
+            const isOnline = ref(false);
             
             // 表单
             const newFriendId = ref('');
             const newFriendName = ref('');
-
-            onMounted(() => {
-                initPeer();
-                // 自动连接所有好友
-                setInterval(retryConnections, 5000);
-            });
-
-            // --- 逻辑部分 ---
             
+            let peer = null;
+
+            // 进入系统 (触发全屏)
+            const enterSystem = () => {
+                isStarted.value = true;
+                // 尝试触发全屏
+                const elem = document.documentElement;
+                if (elem.requestFullscreen) {
+                    elem.requestFullscreen().catch(err => console.log("全屏被拦截，继续运行"));
+                } else if (elem.webkitRequestFullscreen) { /* Safari */
+                    elem.webkitRequestFullscreen();
+                }
+                
+                // 延迟初始化网络，确保页面已稳定
+                setTimeout(initPeer, 500);
+            };
+
             const initPeer = () => {
                 let savedId = localStorage.getItem('nc_uid');
                 if(!savedId) {
-                    savedId = 'u' + Math.random().toString(36).substr(2, 8);
+                    savedId = 'u' + Math.random().toString(36).substr(2, 6);
                     localStorage.setItem('nc_uid', savedId);
                 }
                 
                 peer = new Peer(savedId, { debug: 1 });
-
+                
                 peer.on('open', (id) => {
                     myId.value = id;
                     isOnline.value = true;
                     retryConnections();
                 });
-
-                peer.on('connection', (conn) => {
-                    handleConn(conn);
-                });
-
+                
+                peer.on('connection', handleConn);
                 peer.on('disconnected', () => isOnline.value = false);
-                peer.on('error', (err) => console.log(err));
             };
 
             const handleConn = (conn) => {
-                conn.on('open', () => {
-                    connections[conn.peer] = conn;
-                });
+                conn.on('open', () => connections[conn.peer] = conn);
                 conn.on('data', (data) => {
-                    // data: { type: 'chat', text: '...', fromName: '...' }
-                    // 只有好友列表里的人发消息才接收，或者自动接收并提示？
-                    // 这里简化为：收到即存储
-                    receiveMessage(conn.peer, data);
+                    // 接收消息
+                    const msgObj = {
+                        text: data.text,
+                        senderName: data.fromName || '对方',
+                        time: new Date().toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'}),
+                        isMe: false
+                    };
+                    const targetKey = data.type === 'public' ? 'public' : conn.peer;
+                    saveMsg(targetKey, msgObj);
                 });
                 conn.on('close', () => delete connections[conn.peer]);
                 connections[conn.peer] = conn;
@@ -276,56 +285,44 @@
                 };
 
                 if(currentView.value === 'public') {
-                    // 广播模式：存入 public，并发送给所有连接
                     saveMsg('public', msgObj);
                     Object.values(connections).forEach(conn => {
                         if(conn.open) conn.send({ type: 'public', text, fromName: myName.value });
                     });
                 } else {
-                    // 私聊模式
                     const conn = connections[activeFriendId.value];
                     if(conn && conn.open) {
                         conn.send({ type: 'private', text, fromName: myName.value });
                         saveMsg(activeFriendId.value, msgObj);
                     } else {
-                        alert("对方不在线，无法发送");
-                        return; // 失败不存
+                        alert("离线状态，无法发送");
+                        return;
                     }
                 }
                 inputText.value = '';
                 scrollToBottom();
             };
 
-            const receiveMessage = (peerId, data) => {
-                const msgObj = {
-                    text: data.text,
-                    senderName: data.fromName || '对方',
-                    time: new Date().toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'}),
-                    isMe: false
-                };
-
-                // 判断是广播消息还是私聊
-                const targetBox = data.type === 'public' ? 'public' : peerId;
-                
-                // 如果是陌生人发私聊，自动添加为“临时联系人”逻辑可在此扩展
-                // 这里简单处理：如果不在好友列表，视为广播或者忽略，为了演示，我们存入 public 或者对应ID
-                
-                saveMsg(targetBox, msgObj);
-            };
-
             const saveMsg = (key, msg) => {
                 if(!history[key]) history[key] = [];
                 history[key].push(msg);
-                // 限制存储数量防止 LocalStorage 爆炸
                 if(history[key].length > 100) history[key].shift();
                 localStorage.setItem('nc_history', JSON.stringify(history));
                 
-                if(currentView.value === 'public' && key === 'public') scrollToBottom();
-                if(currentView.value === 'private' && key === activeFriendId.value) scrollToBottom();
+                if((currentView.value === 'public' && key === 'public') || 
+                   (currentView.value === 'private' && key === activeFriendId.value)) {
+                    scrollToBottom();
+                }
             };
 
-            // --- 界面交互 ---
+            const scrollToBottom = () => {
+                nextTick(() => {
+                    const el = document.getElementById('chat-container');
+                    if(el) el.scrollTop = el.scrollHeight;
+                });
+            };
 
+            // 辅助功能
             const enterChat = (target) => {
                 if(target === 'public') {
                     currentView.value = 'public';
@@ -341,12 +338,12 @@
             const switchView = (v) => {
                 currentView.value = v;
                 if(v === 'public') activeFriendId.value = null;
+                scrollToBottom();
             };
 
             const addFriend = () => {
                 if(!newFriendId.value) return;
-                const exists = friends.value.find(f => f.id === newFriendId.value);
-                if(!exists) {
+                if(!friends.value.find(f => f.id === newFriendId.value)) {
                     friends.value.push({ id: newFriendId.value, name: newFriendName.value || '好友' });
                     localStorage.setItem('nc_friends', JSON.stringify(friends.value));
                     retryConnections();
@@ -356,53 +353,31 @@
             };
 
             const deleteFriend = (id) => {
-                if(confirm("删除好友？历史记录将保留。")) {
+                if(confirm("删除连接？")) {
                     friends.value = friends.value.filter(f => f.id !== id);
                     localStorage.setItem('nc_friends', JSON.stringify(friends.value));
                 }
             };
+            
+            const saveSettings = () => localStorage.setItem('nc_name', myName.value);
+            const copyId = () => { navigator.clipboard.writeText(myId.value); alert("已复制"); };
+            const clearData = () => { if(confirm("销毁数据？")) { localStorage.clear(); location.reload(); } };
 
-            const saveSettings = () => {
-                localStorage.setItem('nc_name', myName.value);
-            };
-
-            const copyId = () => {
-                navigator.clipboard.writeText(myId.value);
-                alert("ID已复制");
-            };
-
-            const clearData = () => {
-                if(confirm("警告：这将清除本机所有聊天记录和好友列表！")) {
-                    localStorage.clear();
-                    location.reload();
-                }
-            };
-
-            const scrollToBottom = () => {
-                nextTick(() => {
-                    const el = document.getElementById('chat-container');
-                    if(el) el.scrollTop = el.scrollHeight;
-                });
-            };
-
-            // 标题
+            // Computed
             const title = computed(() => {
                 if(currentView.value === 'public') return '广播频道';
                 const f = friends.value.find(f => f.id === activeFriendId.value);
                 return f ? f.name : '私聊';
             });
-            
             const currentMessages = computed(() => {
                 if(currentView.value === 'public') return history['public'] || [];
                 return history[activeFriendId.value] || [];
             });
-            
-            const myIdShort = computed(() => myId.value.length > 8 ? myId.value.substring(0,6)+'...' : myId.value);
 
             return {
-                myId, myIdShort, myName, isOnline, currentView, showMenu, showAddModal,
-                friends, connections, inputText, newFriendId, newFriendName,
-                title, currentMessages,
+                isStarted, enterSystem, showMenu, showAddModal, currentView, 
+                myName, myId, isOnline, friends, connections, inputText,
+                newFriendId, newFriendName, title, currentMessages,
                 send, enterChat, switchView, addFriend, deleteFriend, saveSettings, copyId, clearData
             };
         }

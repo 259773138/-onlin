@@ -1,0 +1,491 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>NexChat | 零界通讯</title>
+    
+    <!-- 核心 CDN (使用更稳定的源) -->
+    <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
+    <script src="//code.bdstatic.com/npm/leancloud-storage@4.12.0/dist/av-min.js"></script>
+
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        primary: '#6366f1', // Indigo-500
+                        dark: '#0f172a',
+                        card: '#1e293b'
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        /* 隐藏未编译的 Vue 模板 */
+        [v-cloak] { display: none; }
+        
+        /* 加载动画 */
+        .loader { border: 3px solid #f3f3f3; border-top: 3px solid #6366f1; border-radius: 50%; width: 30px; height: 30px; animation: spin 1s linear infinite; }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        
+        /* 滚动条美化 */
+        ::-webkit-scrollbar { width: 5px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: #475569; border-radius: 10px; }
+        
+        /* 毛玻璃效果 */
+        .glass { background: rgba(30, 41, 59, 0.7); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); }
+    </style>
+</head>
+<body class="bg-slate-900 text-slate-200 h-screen w-screen overflow-hidden flex justify-center font-sans">
+
+<!-- 启动加载层 (Vue 挂载前显示) -->
+<div id="loading" class="fixed inset-0 z-[9999] bg-slate-900 flex flex-col items-center justify-center">
+    <div class="loader mb-4"></div>
+    <div class="text-sm text-slate-500">正在初始化加密终端...</div>
+</div>
+
+<div id="app" v-cloak class="w-full h-full max-w-[1400px] flex shadow-2xl relative bg-slate-950 md:border-x border-slate-800">
+
+    <!-- 配置弹窗 -->
+    <div v-if="!config.ready" class="absolute inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-6">
+        <div class="bg-slate-800 p-8 rounded-2xl w-full max-w-md shadow-2xl border border-slate-700">
+            <h2 class="text-2xl font-bold text-white mb-2">系统接入</h2>
+            <p class="text-sm text-slate-400 mb-6">请输入 LeanCloud (国际版) 凭证以连接公共频段。<br>私聊将使用 WebRTC P2P 直连。</p>
+            
+            <div class="space-y-4">
+                <div>
+                    <label class="text-xs text-slate-500 ml-1">App ID</label>
+                    <input v-model="config.appId" class="w-full bg-slate-900 text-white p-3 rounded-lg border border-slate-700 focus:border-primary outline-none transition">
+                </div>
+                <div>
+                    <label class="text-xs text-slate-500 ml-1">App Key</label>
+                    <input v-model="config.appKey" type="password" class="w-full bg-slate-900 text-white p-3 rounded-lg border border-slate-700 focus:border-primary outline-none transition">
+                </div>
+                <button @click="saveConfig" class="w-full bg-primary hover:bg-indigo-600 text-white py-3 rounded-lg font-bold transition shadow-lg shadow-indigo-500/20">启动终端</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 左侧栏 (联系人) -->
+    <div :class="['flex flex-col bg-slate-900 border-r border-slate-800 transition-all duration-300 z-20', isMobile && activeTab === 'chat' ? 'hidden' : 'w-full md:w-80']">
+        <!-- 个人信息头 -->
+        <div class="p-4 border-b border-slate-800 glass sticky top-0 z-10">
+            <div class="flex justify-between items-center mb-2">
+                <h1 class="text-xl font-bold text-white tracking-tight">NexChat</h1>
+                <button @click="showAddFriend = true" class="w-8 h-8 rounded-full bg-indigo-500/20 text-indigo-400 flex items-center justify-center hover:bg-indigo-500 hover:text-white transition">＋</button>
+            </div>
+            <div class="flex items-center gap-3 bg-slate-800/50 p-2 rounded-lg cursor-pointer hover:bg-slate-800 transition" @click="copyId">
+                <div class="w-10 h-10 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-white font-bold text-sm">
+                    {{ myName.slice(0,1) }}
+                </div>
+                <div class="flex-1 min-w-0">
+                    <div class="text-sm font-medium text-white truncate">{{ myName }}</div>
+                    <div class="text-[10px] text-slate-400 truncate">ID: {{ myPeerId }} (点击复制)</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 导航切换 -->
+        <div class="flex border-b border-slate-800">
+            <button @click="switchChannel('public')" :class="['flex-1 py-3 text-sm font-medium transition relative', currentChannel === 'public' ? 'text-indigo-400' : 'text-slate-500 hover:text-slate-300']">
+                公共大厅
+                <div v-if="currentChannel === 'public'" class="absolute bottom-0 left-0 w-full h-0.5 bg-indigo-500"></div>
+            </button>
+            <button @click="switchChannel('private')" :class="['flex-1 py-3 text-sm font-medium transition relative', currentChannel === 'private' ? 'text-green-400' : 'text-slate-500 hover:text-slate-300']">
+                私聊 ({{ friends.length }})
+                <div v-if="currentChannel === 'private'" class="absolute bottom-0 left-0 w-full h-0.5 bg-green-500"></div>
+            </button>
+        </div>
+
+        <!-- 列表内容 -->
+        <div class="flex-1 overflow-y-auto p-2 space-y-1">
+            <div v-if="currentChannel === 'public'" @click="enterChat('public')" class="p-3 rounded-xl flex items-center gap-3 cursor-pointer transition bg-slate-800/40 hover:bg-slate-800 border border-transparent hover:border-slate-700">
+                <div class="w-12 h-12 rounded-full bg-indigo-500/20 text-indigo-400 flex items-center justify-center text-xl">📢</div>
+                <div>
+                    <div class="font-bold text-slate-200">公共频道</div>
+                    <div class="text-xs text-slate-500">LeanCloud 全球同步</div>
+                </div>
+            </div>
+
+            <div v-if="currentChannel === 'private'">
+                <div v-if="friends.length === 0" class="text-center mt-10 text-slate-600 text-xs">
+                    <p class="mb-2">暂无联系人</p>
+                    <button @click="showAddFriend = true" class="text-indigo-400 hover:underline">添加好友</button>
+                </div>
+                <div v-for="friend in friends" :key="friend.id" @click="enterPrivateChat(friend)" :class="['p-3 rounded-xl flex items-center gap-3 cursor-pointer transition border', activePrivateId === friend.id ? 'bg-slate-800 border-slate-700' : 'border-transparent hover:bg-slate-800/50']">
+                    <div class="w-12 h-12 rounded-full bg-slate-700 flex items-center justify-center text-white font-bold relative">
+                        {{ friend.name.slice(0,1) }}
+                        <span :class="['absolute bottom-0 right-0 w-3 h-3 rounded-full border-2 border-slate-900', connections[friend.id] ? 'bg-green-500' : 'bg-slate-500']"></span>
+                    </div>
+                    <div class="flex-1 min-w-0">
+                        <div class="flex justify-between">
+                            <div class="font-medium text-slate-200 truncate">{{ friend.name }}</div>
+                            <span class="text-[10px] text-slate-500">{{ getLastTime(friend.id) }}</span>
+                        </div>
+                        <div class="text-xs text-slate-500 truncate">
+                            {{ connections[friend.id] ? 'P2P 通道已建立' : '离线 - 点击重连' }}
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 右侧栏 (聊天窗口) -->
+    <div :class="['flex-1 flex flex-col bg-slate-950 relative transition-all duration-300', isMobile && activeTab === 'list' ? 'hidden' : 'flex']">
+        <!-- 聊天顶栏 -->
+        <div class="h-16 border-b border-slate-800 flex items-center px-4 glass absolute top-0 w-full z-10 justify-between">
+            <div class="flex items-center gap-3">
+                <button v-if="isMobile" @click="activeTab = 'list'" class="p-2 -ml-2 text-slate-400 hover:text-white">
+                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"></path></svg>
+                </button>
+                <div class="flex flex-col">
+                    <div class="font-bold text-white text-lg flex items-center gap-2">
+                        {{ currentChatName }}
+                        <span v-if="chatType === 'private'" :class="['text-[10px] px-2 py-0.5 rounded-full border', isCurrentPeerConnected ? 'border-green-500/30 text-green-400 bg-green-500/10' : 'border-red-500/30 text-red-400 bg-red-500/10']">
+                            {{ isCurrentPeerConnected ? 'P2P 加密' : '未连接' }}
+                        </span>
+                    </div>
+                </div>
+            </div>
+            
+            <div v-if="chatType === 'private'" class="flex items-center gap-2">
+                 <button v-if="!isCurrentPeerConnected" @click="connectToFriend(activePrivateId)" class="p-2 bg-slate-800 rounded-lg text-xs text-indigo-400 hover:bg-slate-700 transition">重连</button>
+                 <button @click="deleteFriend(activePrivateId)" class="p-2 text-slate-500 hover:text-red-400 transition" title="删除好友">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
+                 </button>
+            </div>
+        </div>
+
+        <!-- 消息区域 -->
+        <div id="msg-container" class="flex-1 overflow-y-auto pt-20 pb-4 px-4 space-y-6">
+            <div class="text-center my-8">
+                <span class="px-3 py-1 bg-slate-800/50 rounded-full text-[10px] text-slate-500 border border-slate-700/50">
+                    {{ chatType === 'public' ? '🔒 数据存储于 LeanCloud 云端' : '🛡️ 端对端加密 · 数据仅存于本地' }}
+                </span>
+            </div>
+
+            <div v-for="(msg, index) in currentMessages" :key="index" :class="['flex w-full', msg.isMe ? 'justify-end' : 'justify-start']">
+                <div :class="['max-w-[85%] md:max-w-[70%] flex flex-col', msg.isMe ? 'items-end' : 'items-start']">
+                    <!-- 名字与时间 -->
+                    <div class="flex items-center gap-2 mb-1 px-1">
+                        <span v-if="!msg.isMe && chatType === 'public'" @click="promptAddFriend(msg)" class="text-xs font-bold text-indigo-400 cursor-pointer hover:underline">
+                            {{ msg.senderName }}
+                        </span>
+                        <span class="text-[10px] text-slate-600">{{ msg.time }}</span>
+                    </div>
+                    
+                    <!-- 气泡 -->
+                    <div :class="['px-4 py-2.5 rounded-2xl text-[15px] leading-relaxed break-words shadow-sm relative group', 
+                        msg.isMe ? 'bg-indigo-600 text-white rounded-tr-sm' : 'bg-slate-800 text-slate-200 rounded-tl-sm border border-slate-700']">
+                        {{ msg.text }}
+                        <!-- 私聊失败重发提示 (UI模拟) -->
+                        <div v-if="msg.error" class="absolute -left-6 top-2 text-red-500 text-lg">!</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 底部输入框 -->
+        <div class="p-4 bg-slate-900 border-t border-slate-800">
+            <div class="flex items-center gap-2 bg-slate-800 p-1.5 rounded-xl border border-slate-700 focus-within:border-indigo-500/50 focus-within:ring-1 focus-within:ring-indigo-500/20 transition-all">
+                <input v-model="inputText" @keyup.enter="sendMessage" placeholder="发送消息..." class="flex-1 bg-transparent px-3 py-2 outline-none text-slate-200 placeholder-slate-600 min-w-0">
+                <button @click="sendMessage" :disabled="!inputText.trim()" class="bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed text-white p-2.5 rounded-lg transition-colors shadow-lg shadow-indigo-500/20">
+                    <svg class="w-5 h-5 transform rotate-90" fill="currentColor" viewBox="0 0 20 20"><path d="M10.894 2.553a1 1 0 00-1.788 0l-7 14a1 1 0 001.169 1.409l5-1.429A1 1 0 009 15.571V11a1 1 0 112 0v4.571a1 1 0 00.725.962l5 1.428a1 1 0 001.17-1.408l-7-14z"></path></svg>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 添加好友弹窗 -->
+    <div v-if="showAddFriend" class="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-6">
+        <div class="bg-slate-800 p-6 rounded-2xl w-full max-w-sm border border-slate-700 shadow-2xl">
+            <h3 class="font-bold text-white text-lg mb-4">添加新的连接</h3>
+            <input v-model="newFriendId" placeholder="输入对方 ID" class="w-full bg-slate-900 text-white p-3 rounded-lg border border-slate-700 mb-3 focus:border-indigo-500 outline-none">
+            <input v-model="newFriendName" placeholder="设置备注名" class="w-full bg-slate-900 text-white p-3 rounded-lg border border-slate-700 mb-6 focus:border-indigo-500 outline-none">
+            <div class="flex gap-3">
+                <button @click="showAddFriend = false" class="flex-1 bg-slate-700 hover:bg-slate-600 text-white py-2 rounded-lg transition">取消</button>
+                <button @click="addFriendAction" class="flex-1 bg-indigo-600 hover:bg-indigo-500 text-white py-2 rounded-lg font-bold transition">确认添加</button>
+            </div>
+        </div>
+    </div>
+
+</div>
+
+<script>
+    const { createApp, ref, reactive, computed, onMounted, nextTick } = Vue;
+
+    createApp({
+        setup() {
+            // --- 状态定义 ---
+            const config = reactive({ ready: false, appId: '', appKey: '' });
+            const myPeerId = ref('初始化中...');
+            const myName = ref(localStorage.getItem('nex_name') || '用户' + Math.floor(Math.random()*1000));
+            
+            const isMobile = ref(window.innerWidth < 768);
+            const activeTab = ref('list');
+            const currentChannel = ref('public'); 
+            const chatType = ref('public'); 
+            const activePrivateId = ref(null);
+            const showAddFriend = ref(false);
+            
+            const friends = ref(JSON.parse(localStorage.getItem('nex_friends') || '[]'));
+            const publicMsgs = ref([]);
+            const privateHistory = reactive(JSON.parse(localStorage.getItem('nex_private_history') || '{}'));
+            const connections = reactive({});
+            
+            const inputText = ref('');
+            const newFriendId = ref('');
+            const newFriendName = ref('');
+            let peer = null;
+
+            // --- 生命周期 ---
+            onMounted(() => {
+                // 移除纯 HTML 加载动画
+                document.getElementById('loading').style.display = 'none';
+                
+                // 检查缓存配置
+                const cachedId = localStorage.getItem('lc_id');
+                const cachedKey = localStorage.getItem('lc_key');
+                if(cachedId && cachedKey) {
+                    config.appId = cachedId; config.appKey = cachedKey;
+                    initSystem();
+                }
+
+                window.addEventListener('resize', () => isMobile.value = window.innerWidth < 768);
+            });
+
+            // --- 核心初始化 ---
+            const saveConfig = () => {
+                if(!config.appId || !config.appKey) return alert("请填写完整配置");
+                localStorage.setItem('lc_id', config.appId);
+                localStorage.setItem('lc_key', config.appKey);
+                initSystem();
+            }
+
+            const initSystem = () => {
+                config.ready = true;
+                try {
+                    AV.init({ appId: config.appId, appKey: config.appKey, serverURLs: "https://avoscloud.com" });
+                    setInterval(fetchPublicMsgs, 3000);
+                    fetchPublicMsgs();
+                    initPeer();
+                } catch(e) {
+                    alert("初始化失败，请检查配置或网络");
+                    config.ready = false;
+                }
+            }
+
+            // --- PeerJS P2P 逻辑 ---
+            const initPeer = () => {
+                let savedId = localStorage.getItem('nex_peer_id');
+                if(!savedId) {
+                    savedId = 'user_' + Math.random().toString(36).substr(2, 6);
+                    localStorage.setItem('nex_peer_id', savedId);
+                }
+                
+                peer = new Peer(savedId, { debug: 1 });
+
+                peer.on('open', (id) => {
+                    myPeerId.value = id;
+                });
+
+                peer.on('connection', (conn) => {
+                    setupConn(conn);
+                });
+
+                peer.on('error', (err) => console.log('Peer Error:', err));
+                
+                // 自动重连好友
+                friends.value.forEach(f => connectToFriend(f.id));
+            }
+
+            const setupConn = (conn) => {
+                conn.on('open', () => {
+                    connections[conn.peer] = conn;
+                });
+                conn.on('data', (data) => {
+                    pushPrivateMsg(conn.peer, null, data.text, false);
+                    if(activePrivateId.value !== conn.peer) {
+                        // 简单的未读提醒逻辑可在此扩展
+                    }
+                });
+                conn.on('close', () => delete connections[conn.peer]);
+                conn.on('error', () => delete connections[conn.peer]);
+                
+                connections[conn.peer] = conn; // 预存
+            }
+
+            const connectToFriend = (id) => {
+                if(!peer || connections[id]?.open) return;
+                const conn = peer.connect(id);
+                setupConn(conn);
+            }
+
+            // --- 消息处理 ---
+            const fetchPublicMsgs = async () => {
+                if(chatType.value !== 'public') return;
+                const query = new AV.Query('PublicChat');
+                query.descending('createdAt');
+                query.limit(50);
+                try {
+                    const res = await query.find();
+                    const newMsgs = res.map(m => ({
+                        text: m.get('text'),
+                        senderName: m.get('senderName'),
+                        senderId: m.get('senderId'),
+                        time: m.createdAt.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'}),
+                        isMe: m.get('senderId') === myPeerId.value
+                    })).reverse();
+                    
+                    if(newMsgs.length > 0 && JSON.stringify(newMsgs) !== JSON.stringify(publicMsgs.value)) {
+                        publicMsgs.value = newMsgs;
+                        scrollToBottom();
+                    }
+                } catch(e) {}
+            }
+
+            const sendMessage = async () => {
+                const text = inputText.value.trim();
+                if(!text) return;
+
+                if(chatType.value === 'public') {
+                    const Chat = AV.Object.extend('PublicChat');
+                    const chat = new Chat();
+                    chat.set('text', text);
+                    chat.set('senderName', myName.value);
+                    chat.set('senderId', myPeerId.value);
+                    await chat.save();
+                    fetchPublicMsgs();
+                } else {
+                    const targetId = activePrivateId.value;
+                    const conn = connections[targetId];
+                    if(conn && conn.open) {
+                        conn.send({ text });
+                        pushPrivateMsg(targetId, null, text, true);
+                    } else {
+                        alert("对方未连接，请点击右上角重连");
+                        return;
+                    }
+                }
+                inputText.value = '';
+                scrollToBottom();
+            }
+
+            const pushPrivateMsg = (peerId, senderName, text, isMe) => {
+                if(!privateHistory[peerId]) privateHistory[peerId] = [];
+                privateHistory[peerId].push({
+                    text, isMe, senderName,
+                    time: new Date().toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})
+                });
+                localStorage.setItem('nex_private_history', JSON.stringify(privateHistory));
+                if(activePrivateId.value === peerId) scrollToBottom();
+            }
+
+            // --- 界面操作 ---
+            const switchChannel = (c) => {
+                currentChannel.value = c;
+                if(isMobile.value) activeTab.value = 'list';
+            }
+
+            const enterChat = (type) => {
+                chatType.value = type;
+                activePrivateId.value = null;
+                activeTab.value = 'chat';
+                if(type === 'public') {
+                    fetchPublicMsgs();
+                    setTimeout(scrollToBottom, 100);
+                }
+            }
+
+            const enterPrivateChat = (friend) => {
+                chatType.value = 'private';
+                activePrivateId.value = friend.id;
+                activeTab.value = 'chat';
+                if(!connections[friend.id]?.open) connectToFriend(friend.id);
+                setTimeout(scrollToBottom, 100);
+            }
+
+            const addFriendAction = () => {
+                if(!newFriendId.value) return;
+                const exists = friends.value.find(f => f.id === newFriendId.value);
+                if(!exists) {
+                    friends.value.push({ id: newFriendId.value, name: newFriendName.value || '好友' });
+                    localStorage.setItem('nex_friends', JSON.stringify(friends.value));
+                    connectToFriend(newFriendId.value);
+                }
+                showAddFriend.value = false;
+                newFriendId.value = ''; newFriendName.value = '';
+                switchChannel('private');
+            }
+
+            const promptAddFriend = (msg) => {
+                if(msg.isMe) return;
+                newFriendId.value = msg.senderId;
+                newFriendName.value = msg.senderName;
+                showAddFriend.value = true;
+            }
+
+            const deleteFriend = (id) => {
+                if(confirm('删除好友？')) {
+                    friends.value = friends.value.filter(f => f.id !== id);
+                    localStorage.setItem('nex_friends', JSON.stringify(friends.value));
+                    enterChat('public');
+                    switchChannel('public');
+                }
+            }
+
+            const copyId = () => {
+                navigator.clipboard.writeText(myPeerId.value);
+                alert("ID 已复制");
+            }
+
+            const scrollToBottom = () => {
+                nextTick(() => {
+                    const el = document.getElementById('msg-container');
+                    if(el) el.scrollTop = el.scrollHeight;
+                });
+            }
+
+            // --- Computed ---
+            const currentChatName = computed(() => {
+                if(chatType.value === 'public') return '公共频道';
+                const f = friends.value.find(f => f.id === activePrivateId.value);
+                return f ? f.name : '未知用户';
+            });
+
+            const currentMessages = computed(() => {
+                if(chatType.value === 'public') return publicMsgs.value;
+                return privateHistory[activePrivateId.value] || [];
+            });
+
+            const isCurrentPeerConnected = computed(() => {
+                if(chatType.value !== 'private') return false;
+                return connections[activePrivateId.value]?.open;
+            });
+
+            const getLastTime = (id) => {
+                const msgs = privateHistory[id];
+                return msgs?.length ? msgs[msgs.length-1].time : '';
+            }
+
+            return {
+                config, saveConfig, myPeerId, myName, isMobile, activeTab,
+                currentChannel, chatType, activePrivateId, friends, connections,
+                inputText, showAddFriend, newFriendId, newFriendName,
+                currentChatName, currentMessages, isCurrentPeerConnected,
+                switchChannel, enterChat, enterPrivateChat, sendMessage,
+                addFriendAction, promptAddFriend, deleteFriend, copyId, 
+                connectToFriend, getLastTime
+            };
+        }
+    }).mount('#app');
+</script>
+</body>
+</html>
